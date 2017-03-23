@@ -1,0 +1,64 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'org.aspectj:aspectjtools:1.8.6'
+    }
+}
+
+dependencies {
+    compile 'org.aspectj:aspectjrt:1.8.6'
+}
+
+import org.aspectj.bridge.IMessage
+import org.aspectj.bridge.MessageHandler
+import org.aspectj.tools.ajc.Main
+
+def processCompile(compileTask, bootClassPath) {
+    compileTask.doLast {
+        String[] args = [
+                "-showWeaveInfo",
+                "-1.8",
+                "-inpath", destinationDir.toString(),
+                "-aspectpath", classpath.asPath,
+                "-d", destinationDir.toString(),
+                "-classpath", classpath.asPath
+        ]
+        if (bootClassPath != null) {
+            args += ["-bootclasspath", bootClassPath]
+        }
+        MessageHandler handler = new MessageHandler(true);
+        new Main().run(args, handler)
+
+        def log = project.logger
+        for (IMessage message : handler.getMessages(null, true)) {
+            switch (message.getKind()) {
+                case IMessage.ABORT:
+                case IMessage.ERROR:
+                case IMessage.FAIL:
+                    log.error message.message, message.thrown
+                    break;
+                case IMessage.WARNING:
+                case IMessage.INFO:
+                    log.info message.message, message.thrown
+                    break;
+                case IMessage.DEBUG:
+                    log.debug message.message, message.thrown
+                    break;
+            }
+        }
+    }
+}
+
+if (project.plugins.findPlugin('com.android.application')) {
+    android.applicationVariants.all { variant ->
+        processCompile(variant.javaCompile, android.bootClasspath.join(File.pathSeparator))
+    }
+} else if (project.plugins.findPlugin('com.android.library')) {
+    android.libraryVariants.all { variant ->
+        processCompile(variant.javaCompile, android.bootClasspath.join(File.pathSeparator))
+    }
+} else if (project.plugins.findPlugin('java')) {
+    processCompile(tasks.getByName("compileJava"), null)
+}
